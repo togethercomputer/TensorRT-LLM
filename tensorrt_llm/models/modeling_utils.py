@@ -316,6 +316,8 @@ class PretrainedModel(Module, GenerationMixin, metaclass=PostInitCaller):
                                    device='cpu') as f:
             for key in f.keys():
                 weights[key] = f.get_tensor(key)
+
+        preprocess_weights(weights, config)
         model.load(weights)
 
         return model
@@ -596,3 +598,27 @@ def optimize_model(model, use_fused_mlp=False):
     if use_fused_mlp:
         model = fuse_gate_mlp(model)
     return model
+
+def preprocess_weights(
+        weights: Dict[str, torch.Tensor],
+        model_config: PretrainedConfig) -> Dict[str, torch.Tensor]:
+    # If layer_norm bias is None. (For MPT and DBRX)
+    if model_config.architecture in ['DbrxForCausalLM']:
+        update_dict = {}
+        for name, param in weights.items():
+            if 'input_layernorm.weight' in name and name.replace(
+                    'weight', 'bias') not in weights:
+                update_dict[name.replace('weight',
+                                         'bias')] = torch.zeros_like(param)
+            if 'post_layernorm.weight' in name and name.replace(
+                    'weight', 'bias') not in weights:
+                update_dict[name.replace('weight',
+                                         'bias')] = torch.zeros_like(param)
+            if 'ln_f.weight' in name and name.replace('weight',
+                                                      'bias') not in weights:
+                update_dict[name.replace('weight',
+                                         'bias')] = torch.zeros_like(param)
+        weights.update(update_dict)
+
+
+
